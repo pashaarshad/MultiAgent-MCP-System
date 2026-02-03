@@ -27,22 +27,22 @@ const mockProjects: Project[] = [
   {
     id: 'project_001',
     name: 'E-commerce Landing Page',
-    createdAt: new Date(Date.now() - 1000 * 60 * 30).toISOString(),
-    updatedAt: new Date(Date.now() - 1000 * 60 * 30).toISOString(),
+    createdAt: "2024-03-10T10:30:00.000Z",
+    updatedAt: "2024-03-10T14:30:00.000Z",
     status: 'complete',
   },
   {
     id: 'project_002',
     name: 'Portfolio Website',
-    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 2).toISOString(),
-    updatedAt: new Date(Date.now() - 1000 * 60 * 60 * 2).toISOString(),
+    createdAt: "2024-03-09T09:00:00.000Z",
+    updatedAt: "2024-03-09T16:45:00.000Z",
     status: 'complete',
   },
   {
     id: 'project_003',
     name: 'Blog Template',
-    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 24).toISOString(),
-    updatedAt: new Date(Date.now() - 1000 * 60 * 60 * 24).toISOString(),
+    createdAt: "2024-03-01T08:00:00.000Z",
+    updatedAt: "2024-03-01T08:00:00.000Z",
     status: 'generating',
   },
 ];
