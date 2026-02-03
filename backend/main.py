@@ -313,13 +313,14 @@ Return the complete code."""
             if use_cloud_first:
                 code_response = await call_openrouter(
                     code_prompt,
-                    "deepseek/deepseek-coder-33b-instruct",
+                    "google/gemini-2.0-flash-exp:free",
                     code_system
                 )
                 model_used = "cloud"
             else:
                 code_response = await call_ollama(code_prompt, OLLAMA_CODE_MODEL, code_system)
-        except:
+        except Exception as e:
+            print(f"Primary generation failed: {e}")
              # Fallback logic
             if use_cloud_first:
                 # Cloud failed, try local
@@ -328,7 +329,7 @@ Return the complete code."""
             elif USE_CLOUD_FALLBACK and OPENROUTER_API_KEY:
                 code_response = await call_openrouter(
                     code_prompt,
-                    "deepseek/deepseek-coder-33b-instruct",
+                    "google/gemini-2.0-flash-exp:free",
                     code_system
                 )
                 model_used = "cloud"
@@ -397,12 +398,13 @@ Please make the requested modifications and return the updated code."""
         
         try:
             if use_cloud_first:
-                response = await call_openrouter(context, "deepseek/deepseek-coder-33b-instruct", system_prompt)
+                response = await call_openrouter(context, "google/gemini-2.0-flash-exp:free", system_prompt)
                 model_used = "cloud"
             else:
                 response = await call_ollama(context, OLLAMA_CODE_MODEL, system_prompt)
                 model_used = "local"
-        except:
+        except Exception as e:
+            print(f"Primary chat failed: {e}")
             if use_cloud_first:
                  # Cloud failed, try local
                 response = await call_ollama(context, OLLAMA_CODE_MODEL, system_prompt)
@@ -410,7 +412,7 @@ Please make the requested modifications and return the updated code."""
             elif USE_CLOUD_FALLBACK and OPENROUTER_API_KEY:
                 response = await call_openrouter(
                     context,
-                    "deepseek/deepseek-coder-33b-instruct",
+                    "google/gemini-2.0-flash-exp:free",
                     system_prompt
                 )
                 model_used = "cloud"
