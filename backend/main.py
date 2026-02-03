@@ -36,7 +36,7 @@ async def startup_event():
     print(f">>> OLLAMA HOST: {OLLAMA_HOST}")
     print(f">>> NLP MODEL: {OLLAMA_CHAT_MODEL}")
     print(f">>> CODE MODEL: {OLLAMA_CODE_MODEL}")
-    print(f">>> Cloud Fallback: {'Enabled' if USE_CLOUD_FALLBACK and OPENROUTER_API_KEY else 'Disabled'}")
+    print(f">>> CLOUD MODE: {'ENABLED (Preferred)' if PREFER_CLOUD else ('Fallback Only' if USE_CLOUD_FALLBACK else 'Disabled')}")
 
 
 
@@ -275,15 +275,32 @@ Expand it by 10x. Provide extreme detail on:
 The output should be a detailed narrative that allows a developer to build it without asking questions.
 Make it professional, modern, and visually stunning."""
             
+            use_cloud = PREFER_CLOUD and bool(OPENROUTER_API_KEY)
+            
             try:
-                enhanced_prompt = await call_ollama(
-                    f"Expand this website request: {request.prompt}",
-                    OLLAMA_CHAT_MODEL,
-                    nlp_system
-                )
+                if use_cloud:
+                    # Use Qwen or Mistral for NLP
+                    enhanced_prompt = await call_openrouter(
+                        f"Expand this website request: {request.prompt}",
+                        "qwen/qwen-2.5-coder-32b-instruct", 
+                        nlp_system
+                    )
+                else:
+                    enhanced_prompt = await call_ollama(
+                        f"Expand this website request: {request.prompt}",
+                        OLLAMA_CHAT_MODEL,
+                        nlp_system
+                    )
             except Exception as e:
                 print(f"NLP Enhancement failed: {e}")
-                pass
+                # Fallback to local if cloud fails
+                try:
+                    enhanced_prompt = await call_ollama(
+                        f"Expand this website request: {request.prompt}",
+                        OLLAMA_CHAT_MODEL,
+                        nlp_system
+                    )
+                except: pass
 
         # Step 2: Generate Code (Code MCP / LLM)
         code_system = """You are an expert Frontend Developer. Build the website exactly as specified.
@@ -307,11 +324,28 @@ Requirements:
 """
 
         model_used = "local"
+        use_cloud = PREFER_CLOUD and bool(OPENROUTER_API_KEY)
+
         try:
-            code_response = await call_ollama(code_prompt, OLLAMA_CODE_MODEL, code_system)
+            if use_cloud:
+                print(">>> Generatng with Cloud (Qwen 2.5 Coder)...")
+                code_response = await call_openrouter(
+                    code_prompt,
+                    "qwen/qwen-2.5-coder-32b-instruct",
+                    code_system
+                )
+                model_used = "cloud (qwen-2.5-32b)"
+            else:
+                code_response = await call_ollama(code_prompt, OLLAMA_CODE_MODEL, code_system)
         except Exception as e:
             print(f"Primary Code Generation failed: {e}")
-            raise
+            if use_cloud and USE_CLOUD_FALLBACK:
+                 # Fallback to local
+                 print(">>> Falling back to Local Ollama...")
+                 code_response = await call_ollama(code_prompt, OLLAMA_CODE_MODEL, code_system)
+                 model_used = "local (fallback)"
+            else:
+                 raise
         
         # Extract code blocks
         code_blocks = extract_code_blocks(code_response)
@@ -404,12 +438,21 @@ User request: {request.message}
 Please make the requested modifications and return the updated code."""
 
         model_used = "local"
+        use_cloud = PREFER_CLOUD and bool(OPENROUTER_API_KEY)
         
         try:
-            response = await call_ollama(context, OLLAMA_CODE_MODEL, system_prompt)
+            if use_cloud:
+                response = await call_openrouter(context, "qwen/qwen-2.5-coder-32b-instruct", system_prompt)
+                model_used = "cloud (qwen-2.5-32b)"
+            else:
+                response = await call_ollama(context, OLLAMA_CODE_MODEL, system_prompt)
         except Exception as e:
             print(f"Chat failed: {e}")
-            raise
+            if use_cloud and USE_CLOUD_FALLBACK:
+                response = await call_ollama(context, OLLAMA_CODE_MODEL, system_prompt)
+                model_used = "local (fallback)"
+            else:
+                raise
         
         code_blocks = extract_code_blocks(response)
         
