@@ -417,7 +417,7 @@ Analyze their request and provide the updated code.
 If they ask for a specific change, make only that change.
 Return updated code in appropriate code blocks."""
 
-        # Build context with current code
+        # Build context with current codes
         context = f"""Current HTML:
 ```html
 {request.current_html or 'No HTML yet'}
