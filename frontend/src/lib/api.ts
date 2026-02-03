@@ -48,7 +48,9 @@ export async function generateWebsite(prompt: string, projectId?: string): Promi
         });
 
         if (!response.ok) {
-            throw new Error(`API Error: ${response.statusText}`);
+            const errorData = await response.json().catch(() => ({}));
+            console.error('API Error Details:', errorData);
+            throw new Error(errorData.detail || `API Error: ${response.statusText}`);
         }
 
         return await response.json();
@@ -82,7 +84,9 @@ export async function chatModify(
         });
 
         if (!response.ok) {
-            throw new Error(`API Error: ${response.statusText}`);
+            const errorData = await response.json().catch(() => ({}));
+            console.error('API Error Details:', errorData);
+            throw new Error(errorData.detail || `API Error: ${response.statusText}`);
         }
 
         return await response.json();

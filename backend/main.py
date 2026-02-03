@@ -19,15 +19,18 @@ load_dotenv()
 
 
 
-# ============================================
-# FASTAPI APP
-# ============================================
-
 app = FastAPI(
     title="Multi-Agent MCP Backend",
     description="Backend API for the Multi-Agent MCP System - orchestrates NLP, Code, Image, and Video MCP servers",
     version="1.0.0"
 )
+
+@app.on_event("startup")
+async def startup_event():
+    print(">>> BACKEND SERVER STARTING UP ON PORT 8000 <<<")
+    print(f">>> OLLAMA HOST: {OLLAMA_HOST}")
+    print(f">>> OPENROUTER KEY CONFIGURED: {bool(OPENROUTER_API_KEY)}")
+
 
 # CORS middleware for frontend
 app.add_middleware(
