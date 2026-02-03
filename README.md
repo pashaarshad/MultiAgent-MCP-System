@@ -2,19 +2,19 @@
 
 > 🚀 **AI-Powered Frontend Builder** - Generate beautiful websites from natural language prompts using multi-agent AI orchestration.
 
-![Version](https://img.shields.io/badge/version-1.0.0-green)
+![Version](https://img.shields.io/badge/version-2.0.0-green)
 ![Next.js](https://img.shields.io/badge/Next.js-14+-black)
-![Python](https://img.shields.io/badge/MCP_Server-Python-blue)
+![Python](https://img.shields.io/badge/Backend-Python_3.10+-blue)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 
 ## ✨ Features
 
 - **Natural Language to Website**: Describe what you want, get complete HTML/CSS/JS
+- **Multi-Agent Architecture**: Specialized MCP servers for NLP, Code, Image, and Video
+- **Local-First AI**: Uses Ollama for free, offline code generation
+- **Cloud Fallback**: OpenRouter integration when local models are unavailable
 - **Live Preview**: See your generated website in real-time
-- **Code View**: View and copy generated code with syntax highlighting
 - **Responsive Preview**: Test on Desktop, Tablet, and Mobile
-- **Multi-Agent Architecture**: Specialized AI agents for different tasks
-- **Local-First AI**: Uses Ollama for offline, free code generation
 - **Export Ready**: Download complete project files
 
 ## 🏗️ Project Structure
@@ -22,19 +22,31 @@
 ```
 MultiAgent-MCP-System/
 ├── frontend/                 # Next.js Frontend Application
-│   ├── src/
-│   │   ├── app/             # Next.js App Router pages
-│   │   ├── components/      # React components
-│   │   │   ├── ui/          # Base UI components (Button, Card, etc.)
-│   │   │   ├── layout/      # Layout components (Sidebar, Header)
-│   │   │   ├── home/        # Home page components
-│   │   │   └── builder/     # Builder page components
-│   │   ├── lib/             # Utility functions
-│   │   └── types/           # TypeScript type definitions
-│   └── public/              # Static assets
+│   └── src/
+│       ├── app/              # Pages (Home, Builder)
+│       ├── components/       # React components
+│       ├── lib/              # Utilities
+│       └── types/            # TypeScript types
 │
-├── mcp_server/              # Python MCP Server (Coming in V2)
+├── backend/                  # FastAPI Backend Server
+│   ├── main.py              # API orchestration
+│   └── requirements.txt
 │
+├── mcp_servers/              # MCP Server Collection
+│   ├── nlp_mcp/             # Prompt enhancement
+│   │   └── server.py
+│   ├── code_mcp/            # Code generation (HTML/CSS/JS)
+│   │   └── server.py
+│   ├── image_mcp/           # Image generation
+│   │   └── server.py
+│   ├── video_mcp/           # Video/Animation generation
+│   │   └── server.py
+│   ├── shared/              # Shared configuration
+│   │   └── config.py
+│   └── requirements.txt
+│
+├── .env.example              # Environment variables template
+├── .gitignore
 └── README.md
 ```
 
@@ -42,10 +54,9 @@ MultiAgent-MCP-System/
 
 ### Prerequisites
 
-- Node.js 18+ 
-- npm or yarn
-- (For V2) Python 3.10+
-- (For V2) Ollama installed locally
+- **Node.js 18+** (for frontend)
+- **Python 3.10+** (for backend)
+- **Ollama** (for local AI - recommended)
 
 ### Installation
 
@@ -54,68 +65,96 @@ MultiAgent-MCP-System/
 git clone https://github.com/pashaarshad/MultiAgent-MCP-System.git
 cd MultiAgent-MCP-System
 
-# Install frontend dependencies
+# ============================================
+# STEP 1: Setup Frontend
+# ============================================
 cd frontend
 npm install
+npm run dev  # Runs on http://localhost:3000
 
-# Start development server
-npm run dev
+# ============================================
+# STEP 2: Setup Backend (new terminal)
+# ============================================
+cd backend
+python -m venv venv
+venv\Scripts\activate  # Windows
+# source venv/bin/activate  # Mac/Linux
+pip install -r requirements.txt
+python main.py  # Runs on http://localhost:8000
+
+# ============================================
+# STEP 3: Install Ollama Models
+# ============================================
+# Download Ollama from https://ollama.com
+ollama pull mistral:7b        # For chat/NLP
+ollama pull deepseek-coder:6.7b  # For code generation
+
+# ============================================
+# STEP 4: Configure Environment
+# ============================================
+cp .env.example .env
+# Edit .env with your API keys (optional for cloud features)
 ```
 
-Visit **http://localhost:3000** to see the application.
+## 🤖 MCP Servers
 
-## 🎨 Customization
+### 1. NLP MCP Server (`nlp_mcp/`)
+**Purpose**: Enhance user prompts into detailed specifications
 
-### Theme Colors
+| Tool | Description |
+|------|-------------|
+| `enhance_prompt` | Expands short prompts into detailed website specs |
+| `classify_intent` | Determines website type and complexity |
+| `generate_content` | Creates copy for specific sections |
 
-Edit `src/app/globals.css` to customize the color scheme:
+### 2. Code MCP Server (`code_mcp/`)
+**Purpose**: Generate HTML, CSS, and JavaScript code
 
-```css
-:root {
-  /* Primary Accent (Green) */
-  --accent-primary: #22c55e;    /* Change this for different accent */
-  --accent-secondary: #16a34a;
-  --accent-tertiary: #15803d;
+| Tool | Description |
+|------|-------------|
+| `generate_html` | Create HTML with Tailwind CSS |
+| `generate_css` | Create custom CSS styles |
+| `generate_javascript` | Create interactive JavaScript |
+| `generate_complete_website` | Full website generation |
+| `modify_code` | Iterative code modifications |
 
-  /* Background Colors */
-  --bg-primary: #0a0a0a;        /* Main background */
-  --bg-secondary: #111111;      /* Sidebar/panels */
-  --bg-tertiary: #1a1a1a;       /* Cards */
-}
-```
+### 3. Image MCP Server (`image_mcp/`)
+**Purpose**: Generate images for websites
 
-### Component Customization
+| Tool | Description |
+|------|-------------|
+| `generate_website_image` | AI-generated images |
+| `generate_placeholder_image` | Simple placeholders |
+| `list_generated_images` | View all generated images |
 
-All components are built with customization in mind:
-- CSS custom properties for easy theming
-- Tailwind utility classes for quick adjustments
-- Props for runtime customization
+### 4. Video MCP Server (`video_mcp/`)
+**Purpose**: Generate animations and video effects
 
-### Layout Dimensions
+| Tool | Description |
+|------|-------------|
+| `generate_css_animations` | CSS keyframe animations |
+| `generate_lottie_placeholder` | Lottie animation embeds |
+| `generate_video_placeholder` | CSS video-like effects |
+| `generate_ai_video` | AI video (requires Replicate) |
 
-```css
-:root {
-  --sidebar-width: 260px;           /* Sidebar width */
-  --sidebar-collapsed-width: 64px;  /* Collapsed sidebar */
-  --header-height: 56px;            /* Header height */
-  --chat-panel-width: 380px;        /* Chat panel width */
-}
-```
+## 🔧 Configuration
 
-## 📦 Tech Stack
+### Required (Free)
+| Service | Purpose | Setup |
+|---------|---------|-------|
+| **Ollama** | Local LLM | `ollama pull mistral:7b && ollama pull deepseek-coder:6.7b` |
 
-| Layer | Technology |
-|-------|------------|
-| Frontend | Next.js 14+, React 19, TypeScript |
-| Styling | Tailwind CSS 4 |
-| Icons | Lucide React |
-| MCP Server | Python (coming in V2) |
-| AI Models | Ollama (local), OpenRouter (cloud) |
-| Database | SQLite (coming in V3) |
+### Optional (For Enhanced Features)
+| Service | Purpose | Get Key |
+|---------|---------|---------|
+| OpenRouter | Cloud LLM fallback | [openrouter.ai](https://openrouter.ai) |
+| Stability AI | Image generation | [platform.stability.ai](https://platform.stability.ai) |
+| Hugging Face | Image generation | [huggingface.co](https://huggingface.co) |
+| Replicate | Video generation | [replicate.com](https://replicate.com) |
 
-## 🗺️ Roadmap
+## 🗺️ Implementation Plan
 
-### V1 (Current) - Frontend UI ✅
+### ✅ V1 - Frontend UI (Complete)
 - [x] Next.js project setup
 - [x] Tailwind CSS with custom theme
 - [x] Home page with prompt input
@@ -123,27 +162,49 @@ All components are built with customization in mind:
 - [x] Preview panel with device modes
 - [x] Code panel with syntax highlighting
 - [x] Responsive design
+- [x] GitHub repository
 
-### V2 (Next) - MCP Server
-- [ ] Python MCP server setup
-- [ ] Agent architecture
-- [ ] Ollama integration
-- [ ] Code generation
+### ✅ V2 - MCP Servers (Complete)
+- [x] NLP MCP Server (prompt enhancement)
+- [x] Code MCP Server (HTML/CSS/JS generation)
+- [x] Image MCP Server (image generation)
+- [x] Video MCP Server (animations)
+- [x] Backend FastAPI orchestration
+- [x] Ollama integration
+- [x] OpenRouter fallback
 
-### V3 (Future) - Full Integration
-- [ ] Image generation
-- [ ] Audio generation
-- [ ] Video generation
-- [ ] SQLite database
+### 🔄 V3 - Integration (Next)
+- [ ] Connect frontend to backend API
+- [ ] Real-time streaming responses
+- [ ] Project persistence (SQLite)
+- [ ] Image generation in UI
+- [ ] Export complete project
+
+### 📋 V4 - Polish (Future)
+- [ ] User authentication
 - [ ] Project history
+- [ ] Template library
+- [ ] Deploy to Vercel + Render
 
-## 📝 Scripts
+## 📦 Tech Stack
 
-```bash
-npm run dev      # Start development server
-npm run build    # Build for production
-npm run start    # Start production server
-npm run lint     # Run ESLint
+| Layer | Technology |
+|-------|------------|
+| Frontend | Next.js 14+, React 19, TypeScript, Tailwind CSS |
+| Backend | FastAPI, Python 3.10+ |
+| MCP Framework | mcp, fastmcp |
+| Local AI | Ollama (Mistral, DeepSeek Coder) |
+| Cloud AI | OpenRouter, Stability AI, Hugging Face |
+| Icons | Lucide React |
+
+## 📝 API Endpoints
+
+```
+POST /api/generate     # Generate website from prompt
+POST /api/chat         # Modify code via chat
+GET  /api/status       # System status
+GET  /api/health       # Health check
+GET  /api/models       # List available Ollama models
 ```
 
 ## 🤝 Contributing
@@ -156,4 +217,4 @@ MIT License - feel free to use this project for learning and development.
 
 ---
 
-Built with ❤️ using Next.js and AI
+Built with ❤️ using Next.js, FastAPI, and Ollama

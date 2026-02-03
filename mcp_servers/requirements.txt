@@ -1,0 +1,28 @@
+# MCP Servers - Requirements
+# Multi-Agent MCP System
+
+# Core MCP Framework
+mcp>=1.0.0
+fastmcp>=0.1.0
+
+# HTTP Client
+httpx>=0.25.0
+
+# Data Validation
+pydantic>=2.0.0
+
+# Async Support
+anyio>=4.0.0
+
+# JSON Handling
+orjson>=3.9.0
+
+# Environment Variables
+python-dotenv>=1.0.0
+
+# Image Processing (for Image MCP)
+Pillow>=10.0.0
+
+# Development & Testing
+pytest>=7.0.0
+pytest-asyncio>=0.21.0
