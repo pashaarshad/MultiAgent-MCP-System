@@ -13,23 +13,20 @@ from datetime import datetime
 import os
 import sys
 
-# Add parent directory to path to import mcp_servers
+# Add parent directory to path (for future MCP integrations)
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
-
-from mcp_servers.router_mcp.server import route_tasks
-from mcp_servers.image_mcp.server import generate_website_image
 
 from dotenv import load_dotenv
 
-# Load environment variables
-# Load environment variables
-load_dotenv()
+# Load environment variables from ROOT .env file (outside backend folder)
+ROOT_DIR = os.path.join(os.path.dirname(__file__), '..')
+load_dotenv(os.path.join(ROOT_DIR, '.env'))
 
 
 
 app = FastAPI(
     title="Multi-Agent MCP Backend",
-    description="Backend API for the Multi-Agent MCP System - orchestrates NLP, Code, Image, and Video MCP servers",
+    description="Backend API for the Multi-Agent MCP System - NLP + Code Generation with Ollama",
     version="1.0.0"
 )
 
@@ -37,7 +34,10 @@ app = FastAPI(
 async def startup_event():
     print(">>> BACKEND SERVER STARTING UP ON PORT 8000 <<<")
     print(f">>> OLLAMA HOST: {OLLAMA_HOST}")
-    print(f">>> OPENROUTER KEY CONFIGURED: {bool(OPENROUTER_API_KEY)}")
+    print(f">>> NLP MODEL: {OLLAMA_CHAT_MODEL}")
+    print(f">>> CODE MODEL: {OLLAMA_CODE_MODEL}")
+    print(f">>> Cloud Fallback: {'Enabled' if USE_CLOUD_FALLBACK and OPENROUTER_API_KEY else 'Disabled'}")
+
 
 
 # CORS middleware for frontend
@@ -260,7 +260,6 @@ async def generate_website(request: GenerationRequest):
     try:
         # Step 1: Enhance the prompt (NLP)
         enhanced_prompt = request.prompt
-        use_cloud_first = PREFER_CLOUD and bool(OPENROUTER_API_KEY)
 
         if request.enhance_prompt:
             # 10x Enhancement Prompt
@@ -277,112 +276,42 @@ The output should be a detailed narrative that allows a developer to build it wi
 Make it professional, modern, and visually stunning."""
             
             try:
-                if use_cloud_first:
-                     enhanced_prompt = await call_openrouter(
-                        f"Expand this website request: {request.prompt}",
-                        "mistralai/mistral-7b-instruct",
-                        nlp_system
-                    )
-                else:
-                    enhanced_prompt = await call_ollama(
-                        f"Expand this website request: {request.prompt}",
-                        OLLAMA_CHAT_MODEL,
-                        nlp_system
-                    )
+                enhanced_prompt = await call_ollama(
+                    f"Expand this website request: {request.prompt}",
+                    OLLAMA_CHAT_MODEL,
+                    nlp_system
+                )
             except Exception as e:
                 print(f"NLP Enhancement failed: {e}")
-                # Fallback logic simplified for brevity - usually implies connection issue
                 pass
 
-        # Step 2: Route Tasks (Router MCP)
-        # Classify and plan the execution
-        try:
-            plan_json_str = await route_tasks(enhanced_prompt)
-            # Try to parse potential markdown block ```json ... ```
-            if "```json" in plan_json_str:
-                import re
-                match = re.search(r'```json\s*([\s\S]*?)```', plan_json_str)
-                if match:
-                    plan_json_str = match.group(1)
-            
-            plan = json.loads(plan_json_str)
-        except Exception as e:
-            print(f"Router failed: {e}. proceed with code only.")
-            plan = {"code_task": enhanced_prompt, "images": []}
-
-        # Step 3: Execute Image Tasks (Image MCP)
-        generated_images = []
-        image_context = ""
-        
-        if "images" in plan and isinstance(plan["images"], list):
-            for img in plan["images"]:
-                if isinstance(img, dict) and "description" in img:
-                    try:
-                        # Call Image MCP
-                        result = await generate_website_image(
-                            description=img["description"],
-                            image_type=img.get("filename", "image").split('_')[0] if "_" in img.get("filename", "") else "hero",
-                            width=1024,
-                            height=600
-                        )
-                        if result["success"]:
-                             generated_images.append(result)
-                             image_context += f"- Image '{result['filename']}' ({img['description']}) is available in the project folder.\n"
-                    except Exception as e:
-                        print(f"Image generation failed for {img}: {e}")
-
-        # Step 4: Generate Code (Code MCP / LLM)
+        # Step 2: Generate Code (Code MCP / LLM)
         code_system = """You are an expert Frontend Developer. Build the website exactly as specified.
 Use HTML5, Tailwind CSS (via CDN), and vanilla JavaScript.
-Make it visually impressive.
+Make it visually impressive with a dark theme and green (#22c55e) accents.
 Structure the code as a SINGLE FILE (index.html) containing <style> and <script>.
 Ensure responsive design mobile-first.
-
-IMPORTANT: Use the following images if they were generated:
-""" + image_context + """
-If an image is available, use exact filename (e.g. <img src="hero_123.png">). 
-If NO image is available for a section, use a solid color div or a placeholder text.
 
 Return the code in ```html code block.
 """
 
         code_prompt = f"""Build this website:
         
-{plan.get("code_task", enhanced_prompt)}
+{enhanced_prompt}
 
 Requirements:
 1. Use Tailwind CSS
 2. High quality design
 3. Responsive
-4. Use generated images if listed above.
+4. Single HTML file
 """
 
         model_used = "local"
         try:
-            if use_cloud_first:
-                code_response = await call_openrouter(
-                    code_prompt,
-                    "google/gemini-2.0-flash-exp:free",
-                    code_system
-                )
-                model_used = "cloud"
-            else:
-                code_response = await call_ollama(code_prompt, OLLAMA_CODE_MODEL, code_system)
+            code_response = await call_ollama(code_prompt, OLLAMA_CODE_MODEL, code_system)
         except Exception as e:
             print(f"Primary Code Generation failed: {e}")
-            # Fallback
-            if use_cloud_first:
-                code_response = await call_ollama(code_prompt, OLLAMA_CODE_MODEL, code_system)
-                model_used = "local"
-            elif USE_CLOUD_FALLBACK and OPENROUTER_API_KEY:
-                code_response = await call_openrouter(
-                    code_prompt,
-                    "google/gemini-2.0-flash-exp:free",
-                    code_system
-                )
-                model_used = "cloud"
-            else:
-                raise
+            raise
         
         # Extract code blocks
         code_blocks = extract_code_blocks(code_response)
@@ -412,8 +341,7 @@ Requirements:
             "original_prompt": request.prompt,
             "enhanced_prompt": enhanced_prompt,
             "created_at": datetime.now().isoformat(),
-            "model_used": model_used,
-            "images": [img.get("filename") for img in generated_images] if generated_images else []
+            "model_used": model_used
         }
         with open(os.path.join(project_folder, "metadata.json"), "w", encoding="utf-8") as f:
             json.dump(metadata, f, indent=2)
@@ -427,7 +355,7 @@ Requirements:
             html=html_content,
             css=code_blocks["css"],
             javascript=code_blocks["js"],
-            enhanced_prompt=f"**Website Plan:**\n\n{enhanced_prompt}\n\n**Generated Assets:**\n" + "\n".join([f"- {i['filename']}" for i in generated_images]),
+            enhanced_prompt=f"**Website Plan:**\n\n{enhanced_prompt}",
             model_used=model_used
         )
         
@@ -475,31 +403,13 @@ User request: {request.message}
 
 Please make the requested modifications and return the updated code."""
 
-        use_cloud_first = PREFER_CLOUD and bool(OPENROUTER_API_KEY)
         model_used = "local"
         
         try:
-            if use_cloud_first:
-                response = await call_openrouter(context, "google/gemini-2.0-flash-exp:free", system_prompt)
-                model_used = "cloud"
-            else:
-                response = await call_ollama(context, OLLAMA_CODE_MODEL, system_prompt)
-                model_used = "local"
+            response = await call_ollama(context, OLLAMA_CODE_MODEL, system_prompt)
         except Exception as e:
-            print(f"Primary chat failed: {e}")
-            if use_cloud_first:
-                 # Cloud failed, try local
-                response = await call_ollama(context, OLLAMA_CODE_MODEL, system_prompt)
-                model_used = "local"
-            elif USE_CLOUD_FALLBACK and OPENROUTER_API_KEY:
-                response = await call_openrouter(
-                    context,
-                    "google/gemini-2.0-flash-exp:free",
-                    system_prompt
-                )
-                model_used = "cloud"
-            else:
-                raise
+            print(f"Chat failed: {e}")
+            raise
         
         code_blocks = extract_code_blocks(response)
         
