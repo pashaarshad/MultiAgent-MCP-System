@@ -9,13 +9,10 @@ import {
     Search,
     FolderOpen,
     Settings,
-    Crown,
     ChevronLeft,
     ChevronRight,
-    Globe,
     User
 } from 'lucide-react';
-import { Button } from '@/components/ui';
 
 /**
  * ============================================
@@ -187,23 +184,6 @@ export function Sidebar({
                     'p-3 border-t border-[var(--border-primary)]',
                     !isOpen && 'lg:p-2'
                 )}>
-                    {/* Upgrade Card */}
-                    <div className={cn(
-                        'p-3 rounded-[var(--radius-md)] bg-[var(--bg-tertiary)] mb-3',
-                        !isOpen && 'lg:hidden'
-                    )}>
-                        <div className="flex items-center gap-2 mb-2">
-                            <Crown size={16} className="text-[var(--warning)]" />
-                            <span className="text-[var(--text-sm)] font-medium">Upgrade to Pro</span>
-                        </div>
-                        <p className="text-[var(--text-xs)] text-[var(--text-muted)] mb-3">
-                            Unlock more features and high-speed generation.
-                        </p>
-                        <Button size="sm" className="w-full">
-                            Upgrade Now
-                        </Button>
-                    </div>
-
                     {/* User Menu */}
                     <div className={cn(
                         'flex items-center gap-3 px-3 py-2 rounded-[var(--radius-md)]',
