@@ -121,3 +121,57 @@ export async function checkBackendHealth(): Promise<boolean> {
         return false;
     }
 }
+
+/**
+ * Fetch list of recent projects
+ */
+export interface ProjectSummary {
+    project_id: string;
+    name: string;
+    created_at: string;
+    model_used: string;
+}
+
+export async function getProjects(): Promise<ProjectSummary[]> {
+    try {
+        const response = await fetch(`${BACKEND_URL}/projects`);
+        if (!response.ok) {
+            return [];
+        }
+        const data = await response.json();
+        return data.projects || [];
+    } catch (error) {
+        console.error('Failed to fetch projects:', error);
+        return [];
+    }
+}
+
+/**
+ * Load a specific project by ID
+ */
+export interface ProjectData {
+    success: boolean;
+    project_id: string;
+    html: string;
+    css: string;
+    javascript: string;
+    metadata?: {
+        original_prompt?: string;
+        enhanced_prompt?: string;
+        created_at?: string;
+        model_used?: string;
+    };
+}
+
+export async function getProject(projectId: string): Promise<ProjectData | null> {
+    try {
+        const response = await fetch(`${BACKEND_URL}/projects/${projectId}`);
+        if (!response.ok) {
+            return null;
+        }
+        return await response.json();
+    } catch (error) {
+        console.error('Failed to load project:', error);
+        return null;
+    }
+}

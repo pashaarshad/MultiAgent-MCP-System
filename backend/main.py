@@ -11,6 +11,14 @@ import json
 import uuid
 from datetime import datetime
 import os
+import sys
+
+# Add parent directory to path to import mcp_servers
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+
+from mcp_servers.router_mcp.server import route_tasks
+from mcp_servers.image_mcp.server import generate_website_image
+
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -52,6 +60,10 @@ OLLAMA_CODE_MODEL = os.getenv("OLLAMA_CODE_MODEL", "deepseek-coder:6.7b")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
 USE_CLOUD_FALLBACK = os.getenv("FALLBACK_TO_CLOUD", "true").lower() == "true"
 PREFER_CLOUD = os.getenv("PREFER_CLOUD", "false").lower() == "true"
+
+# Projects storage directory (outside frontend/backend)
+PROJECTS_DIR = os.path.join(os.path.dirname(__file__), '..', 'projects_recent')
+os.makedirs(PROJECTS_DIR, exist_ok=True)
 
 
 # ============================================
@@ -251,9 +263,18 @@ async def generate_website(request: GenerationRequest):
         use_cloud_first = PREFER_CLOUD and bool(OPENROUTER_API_KEY)
 
         if request.enhance_prompt:
-            nlp_system = """You are a professional web designer. Expand this short prompt into a detailed website specification.
-Include: sections needed, color scheme, layout suggestions, and content ideas.
-Be specific but concise."""
+            # 10x Enhancement Prompt
+            nlp_system = """You are a visionary Product Manager and Web Architect. 
+Your goal is to expand the user's request into a COMPREHENSIVE website specification.
+Expand it by 10x. Provide extreme detail on:
+- Visual Design (Color palette, typography, exact hex codes, spacing, shadows)
+- Layout Structure (Header, Hero, Features, Testimonials, Footer, etc.)
+- Content Strategy (Headlines, copy text, button labels)
+- Animations & Interactions (Hover effects, scroll reveals, transitions)
+- User Experience (Navigation flow, responsiveness, accessibility)
+
+The output should be a detailed narrative that allows a developer to build it without asking questions.
+Make it professional, modern, and visually stunning."""
             
             try:
                 if use_cloud_first:
@@ -268,45 +289,73 @@ Be specific but concise."""
                         OLLAMA_CHAT_MODEL,
                         nlp_system
                     )
-            except:
-                # Fallback logic
-                if use_cloud_first:
-                     # Cloud failed, try local
-                     try:
-                        enhanced_prompt = await call_ollama(
-                            f"Expand this website request: {request.prompt}",
-                            OLLAMA_CHAT_MODEL,
-                            nlp_system
-                        )
-                     except: raise
-                elif USE_CLOUD_FALLBACK and OPENROUTER_API_KEY:
-                    enhanced_prompt = await call_openrouter(
-                        f"Expand this website request: {request.prompt}",
-                        "mistralai/mistral-7b-instruct",
-                        nlp_system
-                    )
-                else:
-                    pass # Ignore NLP failure, use original prompt
+            except Exception as e:
+                print(f"NLP Enhancement failed: {e}")
+                # Fallback logic simplified for brevity - usually implies connection issue
+                pass
+
+        # Step 2: Route Tasks (Router MCP)
+        # Classify and plan the execution
+        try:
+            plan_json_str = await route_tasks(enhanced_prompt)
+            # Try to parse potential markdown block ```json ... ```
+            if "```json" in plan_json_str:
+                import re
+                match = re.search(r'```json\s*([\s\S]*?)```', plan_json_str)
+                if match:
+                    plan_json_str = match.group(1)
+            
+            plan = json.loads(plan_json_str)
+        except Exception as e:
+            print(f"Router failed: {e}. proceed with code only.")
+            plan = {"code_task": enhanced_prompt, "images": []}
+
+        # Step 3: Execute Image Tasks (Image MCP)
+        generated_images = []
+        image_context = ""
         
-        # Step 2: Generate code
-        code_system = """You are an expert frontend developer. Generate a complete, production-ready website.
+        if "images" in plan and isinstance(plan["images"], list):
+            for img in plan["images"]:
+                if isinstance(img, dict) and "description" in img:
+                    try:
+                        # Call Image MCP
+                        result = await generate_website_image(
+                            description=img["description"],
+                            image_type=img.get("filename", "image").split('_')[0] if "_" in img.get("filename", "") else "hero",
+                            width=1024,
+                            height=600
+                        )
+                        if result["success"]:
+                             generated_images.append(result)
+                             image_context += f"- Image '{result['filename']}' ({img['description']}) is available in the project folder.\n"
+                    except Exception as e:
+                        print(f"Image generation failed for {img}: {e}")
+
+        # Step 4: Generate Code (Code MCP / LLM)
+        code_system = """You are an expert Frontend Developer. Build the website exactly as specified.
 Use HTML5, Tailwind CSS (via CDN), and vanilla JavaScript.
-Make it visually impressive with a dark theme and green (#22c55e) accents.
-Include smooth animations and responsive design.
-Return the code in ```html, ```css, and ```javascript code blocks."""
+Make it visually impressive.
+Structure the code as a SINGLE FILE (index.html) containing <style> and <script>.
+Ensure responsive design mobile-first.
 
-        code_prompt = f"""Generate a complete website based on this specification:
+IMPORTANT: Use the following images if they were generated:
+""" + image_context + """
+If an image is available, use exact filename (e.g. <img src="hero_123.png">). 
+If NO image is available for a section, use a solid color div or a placeholder text.
 
-{enhanced_prompt}
+Return the code in ```html code block.
+"""
+
+        code_prompt = f"""Build this website:
+        
+{plan.get("code_task", enhanced_prompt)}
 
 Requirements:
-1. Use Tailwind CSS via CDN
-2. Dark theme with green accent (#22c55e)
-3. Fully responsive
-4. Include animations
-5. Single HTML file with embedded styles and scripts
-
-Return the complete code."""
+1. Use Tailwind CSS
+2. High quality design
+3. Responsive
+4. Use generated images if listed above.
+"""
 
         model_used = "local"
         try:
@@ -320,10 +369,9 @@ Return the complete code."""
             else:
                 code_response = await call_ollama(code_prompt, OLLAMA_CODE_MODEL, code_system)
         except Exception as e:
-            print(f"Primary generation failed: {e}")
-             # Fallback logic
+            print(f"Primary Code Generation failed: {e}")
+            # Fallback
             if use_cloud_first:
-                # Cloud failed, try local
                 code_response = await call_ollama(code_prompt, OLLAMA_CODE_MODEL, code_system)
                 model_used = "local"
             elif USE_CLOUD_FALLBACK and OPENROUTER_API_KEY:
@@ -339,13 +387,47 @@ Return the complete code."""
         # Extract code blocks
         code_blocks = extract_code_blocks(code_response)
         
+        # Save project to projects_recent folder
+        project_folder = os.path.join(PROJECTS_DIR, project_id)
+        os.makedirs(project_folder, exist_ok=True)
+        
+        # Save HTML
+        html_content = code_blocks["html"] or code_response
+        with open(os.path.join(project_folder, "index.html"), "w", encoding="utf-8") as f:
+            f.write(html_content)
+        
+        # Save CSS if present
+        if code_blocks["css"]:
+            with open(os.path.join(project_folder, "styles.css"), "w", encoding="utf-8") as f:
+                f.write(code_blocks["css"])
+        
+        # Save JS if present
+        if code_blocks["js"]:
+            with open(os.path.join(project_folder, "script.js"), "w", encoding="utf-8") as f:
+                f.write(code_blocks["js"])
+        
+        # Save project metadata
+        metadata = {
+            "project_id": project_id,
+            "original_prompt": request.prompt,
+            "enhanced_prompt": enhanced_prompt,
+            "created_at": datetime.now().isoformat(),
+            "model_used": model_used,
+            "images": [img.get("filename") for img in generated_images] if generated_images else []
+        }
+        with open(os.path.join(project_folder, "metadata.json"), "w", encoding="utf-8") as f:
+            json.dump(metadata, f, indent=2)
+        
+        print(f"Project saved to: {project_folder}")
+        
+        # Assemble Response
         return GenerationResponse(
             success=True,
             project_id=project_id,
-            html=code_blocks["html"] or code_response,
+            html=html_content,
             css=code_blocks["css"],
             javascript=code_blocks["js"],
-            enhanced_prompt=enhanced_prompt if request.enhance_prompt else None,
+            enhanced_prompt=f"**Website Plan:**\n\n{enhanced_prompt}\n\n**Generated Assets:**\n" + "\n".join([f"- {i['filename']}" for i in generated_images]),
             model_used=model_used
         )
         
@@ -458,6 +540,110 @@ async def list_models():
         }
     
     return {"success": False, "models": []}
+
+
+# ============================================
+# PROJECT MANAGEMENT ENDPOINTS
+# ============================================
+
+@app.get("/api/projects")
+async def list_projects():
+    """List all recent projects."""
+    try:
+        projects = []
+        
+        # Iterate through project folders
+        for folder_name in os.listdir(PROJECTS_DIR):
+            folder_path = os.path.join(PROJECTS_DIR, folder_name)
+            if os.path.isdir(folder_path):
+                metadata_path = os.path.join(folder_path, "metadata.json")
+                
+                if os.path.exists(metadata_path):
+                    with open(metadata_path, "r", encoding="utf-8") as f:
+                        metadata = json.load(f)
+                        projects.append({
+                            "project_id": metadata.get("project_id", folder_name),
+                            "name": metadata.get("original_prompt", folder_name)[:50] + "...",
+                            "created_at": metadata.get("created_at", ""),
+                            "model_used": metadata.get("model_used", "unknown")
+                        })
+                else:
+                    # Fallback if no metadata
+                    projects.append({
+                        "project_id": folder_name,
+                        "name": folder_name,
+                        "created_at": "",
+                        "model_used": "unknown"
+                    })
+        
+        # Sort by created_at descending (newest first)
+        projects.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+        
+        return {
+            "success": True,
+            "projects": projects,
+            "count": len(projects)
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e),
+            "projects": []
+        }
+
+
+@app.get("/api/projects/{project_id}")
+async def get_project(project_id: str):
+    """Load a specific project by ID."""
+    try:
+        project_folder = os.path.join(PROJECTS_DIR, project_id)
+        
+        if not os.path.exists(project_folder):
+            raise HTTPException(status_code=404, detail="Project not found")
+        
+        # Read HTML
+        html_path = os.path.join(project_folder, "index.html")
+        html_content = ""
+        if os.path.exists(html_path):
+            with open(html_path, "r", encoding="utf-8") as f:
+                html_content = f.read()
+        
+        # Read CSS
+        css_path = os.path.join(project_folder, "styles.css")
+        css_content = ""
+        if os.path.exists(css_path):
+            with open(css_path, "r", encoding="utf-8") as f:
+                css_content = f.read()
+        
+        # Read JS
+        js_path = os.path.join(project_folder, "script.js")
+        js_content = ""
+        if os.path.exists(js_path):
+            with open(js_path, "r", encoding="utf-8") as f:
+                js_content = f.read()
+        
+        # Read metadata
+        metadata_path = os.path.join(project_folder, "metadata.json")
+        metadata = {}
+        if os.path.exists(metadata_path):
+            with open(metadata_path, "r", encoding="utf-8") as f:
+                metadata = json.load(f)
+        
+        return {
+            "success": True,
+            "project_id": project_id,
+            "html": html_content,
+            "css": css_content,
+            "javascript": js_content,
+            "metadata": metadata
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e)
+        }
 
 
 # ============================================

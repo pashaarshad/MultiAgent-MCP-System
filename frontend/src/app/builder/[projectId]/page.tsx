@@ -9,7 +9,7 @@ import { ChatPanel } from '@/components/builder/ChatPanel';
 import { PreviewPanel } from '@/components/builder/PreviewPanel';
 import { CodePanel } from '@/components/builder/CodePanel';
 import type { Message, ViewMode, DeviceMode } from '@/types';
-import { generateWebsite, chatModify } from '@/lib/api';
+import { generateWebsite, chatModify, getProject } from '@/lib/api';
 
 /**
  * ============================================
@@ -47,10 +47,46 @@ export default function BuilderPage() {
     js: '',
   });
 
-  // Handle initial prompt from URL
+  // Ref to prevent double-execution in Strict Mode
+  const hasInitialized = React.useRef(false);
+
+  // Load existing project if no initial prompt
   useEffect(() => {
-    // Only trigger if we have a prompt AND no messages AND no code
-    if (initialPrompt && messages.length === 0 && !generatedCode.html) {
+    async function loadExistingProject() {
+      // Only load if no prompt (meaning user is trying to open an existing project)
+      if (!initialPrompt && !hasInitialized.current) {
+        hasInitialized.current = true;
+
+        const projectData = await getProject(projectId);
+
+        if (projectData && projectData.success) {
+          // Set the code
+          setGeneratedCode({
+            html: projectData.html,
+            css: projectData.css,
+            js: projectData.javascript,
+          });
+
+          // Add a message showing the loaded project
+          const loadedMessage: Message = {
+            id: `msg_${Date.now()}`,
+            role: 'assistant',
+            content: `Project loaded! Original prompt: "${projectData.metadata?.original_prompt || 'Unknown'}"`,
+            timestamp: new Date().toISOString(),
+          };
+          setMessages([loadedMessage]);
+        }
+      }
+    }
+
+    loadExistingProject();
+  }, [projectId, initialPrompt]);
+
+  // Handle initial prompt from URL (new project)
+  useEffect(() => {
+    // Only trigger if we have a prompt AND haven't initialized
+    if (initialPrompt && !hasInitialized.current) {
+      hasInitialized.current = true;
       handleSendMessage(initialPrompt);
     }
   }, [initialPrompt]);
@@ -75,9 +111,9 @@ export default function BuilderPage() {
       let responseCss = '';
       let responseJs = '';
       let aiResponseText = '';
+      let enhancedPrompt = '';
 
       // Determine if this is a new generation or a modification
-      // If we have HTML content, it's a modification
       const isModification = !!generatedCode.html;
 
       if (isModification) {
@@ -95,6 +131,7 @@ export default function BuilderPage() {
         responseHtml = response.html;
         responseCss = response.css;
         responseJs = response.javascript;
+        enhancedPrompt = response.enhanced_prompt || '';
         aiResponseText = "I've created your website! You can view it in the preview panel.";
       }
 
@@ -105,14 +142,26 @@ export default function BuilderPage() {
         js: responseJs,
       });
 
-      // Add AI message
-      const aiMessage: Message = {
-        id: generateMessageId(),
+      // Add AI messages (Plan + Result)
+      const newMessages: Message[] = [];
+
+      if (enhancedPrompt) {
+        newMessages.push({
+          id: generateMessageId(),
+          role: 'assistant',
+          content: enhancedPrompt, // This contains the plan
+          timestamp: new Date().toISOString(),
+        });
+      }
+
+      newMessages.push({
+        id: generateMessageId(), // Ensure unique ID
         role: 'assistant',
         content: aiResponseText,
         timestamp: new Date().toISOString(),
-      };
-      setMessages(prev => [...prev, aiMessage]);
+      });
+
+      setMessages(prev => [...prev, ...newMessages]);
 
     } catch (error) {
       console.error(error);

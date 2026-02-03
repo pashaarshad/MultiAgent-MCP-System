@@ -57,6 +57,7 @@ pip-delete-this-directory.txt
 
 # Generated projects
 projects/
+projects_recent/
 
 # Temporary files
 *.tmp

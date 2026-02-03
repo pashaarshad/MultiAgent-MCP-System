@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { generateProjectId } from '@/lib/utils';
@@ -9,6 +9,7 @@ import { PromptInput } from '@/components/home/PromptInput';
 import { ProjectGallery } from '@/components/home/ProjectGallery';
 import { Sparkles } from 'lucide-react';
 import type { Project } from '@/types';
+import { getProjects, type ProjectSummary } from '@/lib/api';
 
 /**
  * ============================================
@@ -22,42 +23,38 @@ import type { Project } from '@/types';
  * - Change layout
  */
 
-// Mock data for demonstration
-const mockProjects: Project[] = [
-  {
-    id: 'project_001',
-    name: 'E-commerce Landing Page',
-    createdAt: "2024-03-10T10:30:00.000Z",
-    updatedAt: "2024-03-10T14:30:00.000Z",
-    status: 'complete',
-  },
-  {
-    id: 'project_002',
-    name: 'Portfolio Website',
-    createdAt: "2024-03-09T09:00:00.000Z",
-    updatedAt: "2024-03-09T16:45:00.000Z",
-    status: 'complete',
-  },
-  {
-    id: 'project_003',
-    name: 'Blog Template',
-    createdAt: "2024-03-01T08:00:00.000Z",
-    updatedAt: "2024-03-01T08:00:00.000Z",
-    status: 'generating',
-  },
-];
-
-// Sidebar recent projects
-const recentProjects = [
-  { id: 'project_001', name: 'E-commerce Landing' },
-  { id: 'project_002', name: 'Portfolio Website' },
-  { id: 'project_003', name: 'Blog Template' },
-];
-
 export default function HomePage() {
   const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [recentProjects, setRecentProjects] = useState<{ id: string; name: string }[]>([]);
+
+  // Fetch projects from API on mount
+  useEffect(() => {
+    async function fetchProjects() {
+      const apiProjects = await getProjects();
+
+      // Convert API response to Project type
+      const convertedProjects: Project[] = apiProjects.map((p: ProjectSummary) => ({
+        id: p.project_id,
+        name: p.name,
+        createdAt: p.created_at,
+        updatedAt: p.created_at,
+        status: 'complete' as const,
+      }));
+
+      setProjects(convertedProjects);
+
+      // Set recent projects for sidebar (top 5)
+      setRecentProjects(convertedProjects.slice(0, 5).map(p => ({
+        id: p.id,
+        name: p.name.slice(0, 20) + (p.name.length > 20 ? '...' : '')
+      })));
+    }
+
+    fetchProjects();
+  }, []);
 
   const handlePromptSubmit = async (prompt: string) => {
     setIsGenerating(true);
@@ -158,7 +155,7 @@ export default function HomePage() {
           {/* Project Gallery */}
           <div className="animate-slideUp" style={{ animationDelay: '300ms' }}>
             <ProjectGallery
-              projects={mockProjects}
+              projects={projects}
               onProjectOptionsClick={handleProjectOptionsClick}
             />
           </div>
