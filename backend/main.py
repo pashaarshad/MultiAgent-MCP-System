@@ -263,17 +263,33 @@ async def generate_website(request: GenerationRequest):
 
         if request.enhance_prompt:
             # 10x Enhancement Prompt
-            nlp_system = """You are a visionary Product Manager and Web Architect. 
-Your goal is to expand the user's request into a COMPREHENSIVE website specification.
-Expand it by 10x. Provide extreme detail on:
-- Visual Design (Color palette, typography, exact hex codes, spacing, shadows)
-- Layout Structure (Header, Hero, Features, Testimonials, Footer, etc.)
-- Content Strategy (Headlines, copy text, button labels)
-- Animations & Interactions (Hover effects, scroll reveals, transitions)
-- User Experience (Navigation flow, responsiveness, accessibility)
+            # 100x Enhancement Prompt - The "Mega Architect"
+            nlp_system = """You are an elite Lead Product Designer and UI/UX Architect at a top Silicon Valley firm.
+Your goal is to transform the user's request into a WORLD-CLASS website specification.
 
-The output should be a detailed narrative that allows a developer to build it without asking questions.
-Make it professional, modern, and visually stunning."""
+RULES:
+1. **Expand aggressively**: If the user says "create a website", do NOT just create a blank page. Invent a brand, a purpose, and a full structure.
+2. **Force Modern UI/UX**: specified designs MUST include:
+   - Glassmorphism, Neomorphism, or Swiss Style (Bento Grids).
+   - Smooth gradients, large stunning typography (Inter, Clash Display).
+   - Micro-interactions (hover states, scroll reveals, floating elements).
+3. **Mandatory Structure**:
+   - **Navbar**: Sticky, blurred background, brand logo, CTA button.
+   - **Hero Section**: Immersive full-height (100vh) with dynamic text and abstract background or placeholder hero image.
+   - **Features/Services**: Grid layout (Bento box style) with icons.
+   - **Social Proof**: Testimonials or logo strip.
+   - **Call to Action (CTA)**: Large, high-contrast section before footer.
+   - **Footer**: Detailed links, newsletter form, copyright.
+
+OUTPUT FORMAT:
+Write a purely descriptive narrative that a Senior Frontend Developer can code immediately. 
+- Define the **Color Palette** (provide specific Hex codes like #0f172a, #38bdf8).
+- Define the **Typography** (Heading fonts, body fonts).
+- Describe the **Layout** section by section.
+- Describe the **Animations** (e.g., "Hero text fades in from bottom", "Cards hover with 3D tilt").
+
+Do NOT output code. Output the SPECIFICATION only.
+Make it sound expensive, premium, and polished."""
             
             use_cloud = PREFER_CLOUD and bool(OPENROUTER_API_KEY)
             
@@ -303,14 +319,25 @@ Make it professional, modern, and visually stunning."""
                 except: pass
 
         # Step 2: Generate Code (Code MCP / LLM)
-        code_system = """You are an expert Frontend Developer. Build the website exactly as specified.
-Use HTML5, Tailwind CSS (via CDN), and vanilla JavaScript.
-Make it visually impressive with a dark theme and green (#22c55e) accents.
-Structure the code as a SINGLE FILE (index.html) containing <style> and <script>.
-Ensure responsive design mobile-first.
+        code_system = """You are a Senior Frontend Engineer specialized in Award-Winning Websites. 
+Your job is to IMPLEMENT the provided design specification with pixel-perfect precision.
 
-Return the code in ```html code block.
-"""
+TECHNICAL STACK:
+- HTML5 (Semantic Structure)
+- Tailwind CSS (via CDN: <script src="https://cdn.tailwindcss.com"></script>)
+- FontAwesome (via CDN: <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">)
+- Google Fonts (Import Inter and Playfair Display)
+
+DESIGN REQUIREMENTS:
+1. **Visuals**: Use gradients, glassmorphism (backdrop-blur), and deep shadows.
+2. **Layout**: Use CSS Grid/Flexbox. Implement Bento Grids for features.
+3. **Interactive**: Add hover effects (transform: scale, rotate) and simple entry animations (@keyframes).
+4. **Responsive**: Mobile-first approach.
+
+OUTPUT:
+Return a SINGLE index.html file containing CSS in <style> and JS in <script>.
+Do not use external CSS/JS files.
+Make it look like a customized, premium SaaS landing page."""
 
         code_prompt = f"""Build this website:
         
