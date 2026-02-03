@@ -51,6 +51,7 @@ OLLAMA_CHAT_MODEL = os.getenv("OLLAMA_CHAT_MODEL", "mistral:7b")
 OLLAMA_CODE_MODEL = os.getenv("OLLAMA_CODE_MODEL", "deepseek-coder:6.7b")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
 USE_CLOUD_FALLBACK = os.getenv("FALLBACK_TO_CLOUD", "true").lower() == "true"
+PREFER_CLOUD = os.getenv("PREFER_CLOUD", "false").lower() == "true"
 
 
 # ============================================
@@ -247,24 +248,45 @@ async def generate_website(request: GenerationRequest):
     try:
         # Step 1: Enhance the prompt (NLP)
         enhanced_prompt = request.prompt
+        use_cloud_first = PREFER_CLOUD and bool(OPENROUTER_API_KEY)
+
         if request.enhance_prompt:
             nlp_system = """You are a professional web designer. Expand this short prompt into a detailed website specification.
 Include: sections needed, color scheme, layout suggestions, and content ideas.
 Be specific but concise."""
             
             try:
-                enhanced_prompt = await call_ollama(
-                    f"Expand this website request: {request.prompt}",
-                    OLLAMA_CHAT_MODEL,
-                    nlp_system
-                )
+                if use_cloud_first:
+                     enhanced_prompt = await call_openrouter(
+                        f"Expand this website request: {request.prompt}",
+                        "mistralai/mistral-7b-instruct",
+                        nlp_system
+                    )
+                else:
+                    enhanced_prompt = await call_ollama(
+                        f"Expand this website request: {request.prompt}",
+                        OLLAMA_CHAT_MODEL,
+                        nlp_system
+                    )
             except:
-                if USE_CLOUD_FALLBACK and OPENROUTER_API_KEY:
+                # Fallback logic
+                if use_cloud_first:
+                     # Cloud failed, try local
+                     try:
+                        enhanced_prompt = await call_ollama(
+                            f"Expand this website request: {request.prompt}",
+                            OLLAMA_CHAT_MODEL,
+                            nlp_system
+                        )
+                     except: raise
+                elif USE_CLOUD_FALLBACK and OPENROUTER_API_KEY:
                     enhanced_prompt = await call_openrouter(
                         f"Expand this website request: {request.prompt}",
                         "mistralai/mistral-7b-instruct",
                         nlp_system
                     )
+                else:
+                    pass # Ignore NLP failure, use original prompt
         
         # Step 2: Generate code
         code_system = """You are an expert frontend developer. Generate a complete, production-ready website.
@@ -288,9 +310,22 @@ Return the complete code."""
 
         model_used = "local"
         try:
-            code_response = await call_ollama(code_prompt, OLLAMA_CODE_MODEL, code_system)
+            if use_cloud_first:
+                code_response = await call_openrouter(
+                    code_prompt,
+                    "deepseek/deepseek-coder-33b-instruct",
+                    code_system
+                )
+                model_used = "cloud"
+            else:
+                code_response = await call_ollama(code_prompt, OLLAMA_CODE_MODEL, code_system)
         except:
-            if USE_CLOUD_FALLBACK and OPENROUTER_API_KEY:
+             # Fallback logic
+            if use_cloud_first:
+                # Cloud failed, try local
+                code_response = await call_ollama(code_prompt, OLLAMA_CODE_MODEL, code_system)
+                model_used = "local"
+            elif USE_CLOUD_FALLBACK and OPENROUTER_API_KEY:
                 code_response = await call_openrouter(
                     code_prompt,
                     "deepseek/deepseek-coder-33b-instruct",
@@ -357,11 +392,22 @@ User request: {request.message}
 
 Please make the requested modifications and return the updated code."""
 
+        use_cloud_first = PREFER_CLOUD and bool(OPENROUTER_API_KEY)
+        model_used = "local"
+        
         try:
-            response = await call_ollama(context, OLLAMA_CODE_MODEL, system_prompt)
-            model_used = "local"
+            if use_cloud_first:
+                response = await call_openrouter(context, "deepseek/deepseek-coder-33b-instruct", system_prompt)
+                model_used = "cloud"
+            else:
+                response = await call_ollama(context, OLLAMA_CODE_MODEL, system_prompt)
+                model_used = "local"
         except:
-            if USE_CLOUD_FALLBACK and OPENROUTER_API_KEY:
+            if use_cloud_first:
+                 # Cloud failed, try local
+                response = await call_ollama(context, OLLAMA_CODE_MODEL, system_prompt)
+                model_used = "local"
+            elif USE_CLOUD_FALLBACK and OPENROUTER_API_KEY:
                 response = await call_openrouter(
                     context,
                     "deepseek/deepseek-coder-33b-instruct",
