@@ -20,10 +20,15 @@ from dotenv import load_dotenv
 
 # Load environment variables from ROOT .env file (outside backend folder)
 ROOT_DIR = os.path.join(os.path.dirname(__file__), '..')
-load_dotenv(os.path.join(ROOT_DIR, '.env'))
+load_dotenv(os.path.join(ROOT_DIR, '.env'), override=True)
 
 # Config loaded
 print("Environment loaded.")
+api_key = os.getenv("OPENROUTER_API_KEY")
+if api_key:
+    print(f"API Key loaded: {api_key[:5]}...{api_key[-4:]}")
+else:
+    print("API Key NOT loaded")
 
 
 
@@ -259,6 +264,74 @@ async def get_status():
     }
 
 
+async def smart_generate(prompt: str, system_prompt: str, task: str = "chat") -> tuple[str, str]:
+    """
+    Generates text using preferred strategy with bi-directional fallback.
+    task: 'chat' (NLP) or 'code' (HTML/CSS/JS)
+    Returns: (content, model_used_name)
+    """
+    if task == "code":
+        cloud_model = CLOUD_CODE_MODEL
+        ollama_model = OLLAMA_CODE_MODEL
+    else:
+        cloud_model = CLOUD_CHAT_MODEL
+        ollama_model = OLLAMA_CHAT_MODEL
+
+    try_local = not PREFER_CLOUD
+    content = ""
+    model_name = ""
+    success = False
+
+    # 1. First Attempt
+    if try_local:
+        try:
+            print(f"SmartGen: Attempting Local ({ollama_model})...")
+            content = await call_ollama(prompt, ollama_model, system_prompt)
+            model_name = f"local ({ollama_model})"
+            success = True
+        except Exception as e:
+            print(f"SmartGen: Local failed: {e}")
+    else:
+        # Prefer Cloud
+        if bool(OPENROUTER_API_KEY):
+            try:
+                print(f"SmartGen: Attempting Cloud ({cloud_model})...")
+                content = await call_openrouter(prompt, cloud_model, system_prompt)
+                model_name = f"cloud ({cloud_model})"
+                success = True
+            except Exception as e:
+                print(f"SmartGen: Cloud failed: {e}")
+        else:
+             print("SmartGen: Cloud skipped (No Key)")
+
+    # 2. Fallback (if not success)
+    if not success:
+        # If Local failed -> Try Cloud (if Key exists)
+        if try_local and bool(OPENROUTER_API_KEY) and USE_CLOUD_FALLBACK:
+             print("SmartGen: Fallback to Cloud...")
+             try:
+                 content = await call_openrouter(prompt, cloud_model, system_prompt)
+                 model_name = f"cloud ({cloud_model})"
+                 success = True
+             except Exception as e:
+                 print(f"SmartGen: Fallback Cloud failed: {e}")
+
+        # If Cloud failed (or skipped) -> Try Local (if Fallback enabled)
+        elif not try_local and USE_CLOUD_FALLBACK:
+             print("SmartGen: Fallback to Local...")
+             try:
+                 content = await call_ollama(prompt, ollama_model, system_prompt)
+                 model_name = f"local ({ollama_model})"
+                 success = True
+             except Exception as e:
+                 print(f"SmartGen: Fallback Local failed: {e}")
+
+    if not success:
+        raise Exception("SmartGen: All configured models failed.")
+        
+    return content, model_name
+
+
 @app.post("/api/generate", response_model=GenerationResponse)
 async def generate_website(request: GenerationRequest):
     """Generate a complete website from a prompt."""
@@ -283,32 +356,15 @@ Expand it by 10x. Provide extreme detail on:
 The output should be a detailed narrative that allows a developer to build it without asking questions.
 Make it professional, modern, and visually stunning."""
             
-            use_cloud = PREFER_CLOUD and bool(OPENROUTER_API_KEY)
-            
             try:
-                if use_cloud:
-                    # Use Cloud Model (Gemini/Qwen)
-                    enhanced_prompt = await call_openrouter(
-                        f"Expand this website request: {request.prompt}",
-                        CLOUD_CHAT_MODEL, 
-                        nlp_system
-                    )
-                else:
-                    enhanced_prompt = await call_ollama(
-                        f"Expand this website request: {request.prompt}",
-                        OLLAMA_CHAT_MODEL,
-                        nlp_system
-                    )
+                enhanced_prompt, _ = await smart_generate(
+                    f"Expand this website request: {request.prompt}",
+                    nlp_system,
+                    task="chat"
+                )
             except Exception as e:
                 print(f"NLP Enhancement failed: {e}")
-                # Fallback to local if cloud fails
-                try:
-                    enhanced_prompt = await call_ollama(
-                        f"Expand this website request: {request.prompt}",
-                        OLLAMA_CHAT_MODEL,
-                        nlp_system
-                    )
-                except: pass
+                # Keep original prompt if enhancement fails completely
 
         # Step 2: Generate Code (Code MCP / LLM)
         code_system = """You are an expert Frontend Developer. Build the website exactly as specified.
@@ -331,29 +387,15 @@ Requirements:
 4. Single HTML file
 """
 
-        model_used = "local"
-        use_cloud = PREFER_CLOUD and bool(OPENROUTER_API_KEY)
-
         try:
-            if use_cloud:
-                print(f">>> Generating with Cloud ({CLOUD_CODE_MODEL})...")
-                code_response = await call_openrouter(
-                    code_prompt,
-                    CLOUD_CODE_MODEL,
-                    code_system
-                )
-                model_used = f"cloud ({CLOUD_CODE_MODEL})"
-            else:
-                code_response = await call_ollama(code_prompt, OLLAMA_CODE_MODEL, code_system)
+            code_response, model_used = await smart_generate(
+                code_prompt,
+                code_system,
+                task="code"
+            )
         except Exception as e:
-            print(f"Primary Code Generation failed: {e}")
-            if use_cloud and USE_CLOUD_FALLBACK:
-                 # Fallback to local
-                 print(">>> Falling back to Local Ollama...")
-                 code_response = await call_ollama(code_prompt, OLLAMA_CODE_MODEL, code_system)
-                 model_used = "local (fallback)"
-            else:
-                 raise
+            print(f"Code Generation failed: {e}")
+            raise
         
         # Extract code blocks
         code_blocks = extract_code_blocks(code_response)
@@ -421,9 +463,9 @@ class EnhanceRequest(BaseModel):
 async def enhance_prompt_endpoint(request: EnhanceRequest):
     """
     Standalone endpoint to expand a short prompt into a detailed specification.
+    Fallback Logic: Local (Ollama) -> Cloud (OpenRouter).
     """
-    model = CLOUD_CHAT_MODEL if PREFER_CLOUD else OLLAMA_CHAT_MODEL
-    print(f">>> Enhancing prompt with {model}...")
+    print(f">>> Enhancing prompt: {request.prompt[:50]}...")
 
     # The "Mega Architect" System Prompt (optimized for Structure & Detail)
     nlp_system = """You are an elite Lead Product Designer and Grid System Architect.
@@ -450,27 +492,55 @@ RULES:
 
 Output the text directly."""
 
-    try:
-        use_cloud = PREFER_CLOUD and bool(OPENROUTER_API_KEY)
-        
-        if use_cloud:
-            enhanced_text = await call_openrouter(
-                f"Expand this idea into a full spec: {request.prompt}",
-                CLOUD_CHAT_MODEL,
-                nlp_system
-            )
-        else:
+    enhanced_text = ""
+    success = False
+    last_error = ""
+
+    # Strategy: Local First?
+    try_local = not PREFER_CLOUD
+    
+    # 1. Try Local (Ollama)
+    if try_local:
+        try:
+            print(f"Attempting Local Enhancement with {OLLAMA_CHAT_MODEL}...")
             enhanced_text = await call_ollama(
                 f"Expand this idea into a full spec: {request.prompt}",
                 OLLAMA_CHAT_MODEL,
                 nlp_system
             )
-            
-        return {"enhanced_prompt": enhanced_text}
-        
-    except Exception as e:
-        print(f"Enhancement failed: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+            success = True
+            print(">>> Local Enhancement Successful")
+        except Exception as e:
+            print(f">>> Local Failed: {e}")
+            last_error = str(e)
+            if not USE_CLOUD_FALLBACK:
+                 raise HTTPException(status_code=500, detail=f"Local Failed: {str(e)}")
+            print(">>> Falling back to Cloud...")
+
+    # 2. Try Cloud (OpenRouter) if (Local Skipped OR Local Failed) AND (We have a Key)
+    if not success:
+        if bool(OPENROUTER_API_KEY):
+            try:
+                print(f"Attempting Cloud Enhancement with {CLOUD_CHAT_MODEL}...")
+                enhanced_text = await call_openrouter(
+                    f"Expand this idea into a full spec: {request.prompt}",
+                    CLOUD_CHAT_MODEL,
+                    nlp_system
+                )
+                success = True
+                print(">>> Cloud Enhancement Successful")
+            except Exception as e:
+                print(f">>> Cloud Failed: {e}")
+                last_error = str(e)
+        else:
+            print(">>> Cloud Fallback Skipped (No API Key)")
+            if not try_local: 
+                 last_error = "No API Key configured and Local mode disabled."
+
+    if not success:
+        raise HTTPException(status_code=500, detail=f"Enhancement Failed. Last Error: {last_error}")
+
+    return {"enhanced_prompt": enhanced_text}
 
 
 @app.post("/api/chat")
