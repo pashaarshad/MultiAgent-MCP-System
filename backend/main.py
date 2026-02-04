@@ -22,6 +22,9 @@ from dotenv import load_dotenv
 ROOT_DIR = os.path.join(os.path.dirname(__file__), '..')
 load_dotenv(os.path.join(ROOT_DIR, '.env'))
 
+# Config loaded
+print("Environment loaded.")
+
 
 
 app = FastAPI(
@@ -55,11 +58,16 @@ app.add_middleware(
 # ============================================
 
 OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
-OLLAMA_CHAT_MODEL = os.getenv("OLLAMA_CHAT_MODEL", "mistral:7b")
-OLLAMA_CODE_MODEL = os.getenv("OLLAMA_CODE_MODEL", "deepseek-coder:6.7b")
+OLLAMA_CHAT_MODEL = os.getenv("OLLAMA_CHAT_MODEL", "llama3.2:3b")
+OLLAMA_CODE_MODEL = os.getenv("OLLAMA_CODE_MODEL", "llama3.2:3b")
+
+# Cloud Configuration
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
+CLOUD_CHAT_MODEL = os.getenv("CLOUD_CHAT_MODEL", "google/gemini-2.0-flash-exp:free")
+CLOUD_CODE_MODEL = os.getenv("CLOUD_CODE_MODEL", "google/gemini-2.0-flash-exp:free")
+
 USE_CLOUD_FALLBACK = os.getenv("FALLBACK_TO_CLOUD", "true").lower() == "true"
-PREFER_CLOUD = os.getenv("PREFER_CLOUD", "false").lower() == "true"
+PREFER_CLOUD = os.getenv("PREFER_CLOUD", "true").lower() == "true"
 
 # Projects storage directory (outside frontend/backend)
 PROJECTS_DIR = os.path.join(os.path.dirname(__file__), '..', 'projects_recent')
@@ -279,10 +287,10 @@ Make it professional, modern, and visually stunning."""
             
             try:
                 if use_cloud:
-                    # Use Qwen or Mistral for NLP
+                    # Use Cloud Model (Gemini/Qwen)
                     enhanced_prompt = await call_openrouter(
                         f"Expand this website request: {request.prompt}",
-                        "qwen/qwen-2.5-coder-32b-instruct", 
+                        CLOUD_CHAT_MODEL, 
                         nlp_system
                     )
                 else:
@@ -328,13 +336,13 @@ Requirements:
 
         try:
             if use_cloud:
-                print(">>> Generatng with Cloud (Qwen 2.5 Coder)...")
+                print(f">>> Generating with Cloud ({CLOUD_CODE_MODEL})...")
                 code_response = await call_openrouter(
                     code_prompt,
-                    "qwen/qwen-2.5-coder-32b-instruct",
+                    CLOUD_CODE_MODEL,
                     code_system
                 )
-                model_used = "cloud (qwen-2.5-32b)"
+                model_used = f"cloud ({CLOUD_CODE_MODEL})"
             else:
                 code_response = await call_ollama(code_prompt, OLLAMA_CODE_MODEL, code_system)
         except Exception as e:
@@ -442,8 +450,8 @@ Please make the requested modifications and return the updated code."""
         
         try:
             if use_cloud:
-                response = await call_openrouter(context, "qwen/qwen-2.5-coder-32b-instruct", system_prompt)
-                model_used = "cloud (qwen-2.5-32b)"
+                response = await call_openrouter(context, CLOUD_CODE_MODEL, system_prompt)
+                model_used = f"cloud ({CLOUD_CODE_MODEL})"
             else:
                 response = await call_ollama(context, OLLAMA_CODE_MODEL, system_prompt)
         except Exception as e:
