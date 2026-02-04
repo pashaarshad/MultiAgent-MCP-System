@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import { cn } from '@/lib/utils';
+import { enhancePrompt } from '@/lib/api';
 import { Button } from '@/components/ui';
 import {
     Paperclip,
@@ -36,6 +37,20 @@ export function PromptInput({
 }: PromptInputProps) {
     const [prompt, setPrompt] = useState('');
     const [isFocused, setIsFocused] = useState(false);
+    const [isEnhancing, setIsEnhancing] = useState(false);
+
+    const handleEnhance = async () => {
+        if (!prompt.trim()) return;
+        setIsEnhancing(true);
+        try {
+            const enhanced = await enhancePrompt(prompt.trim());
+            setPrompt(enhanced);
+        } catch (error) {
+            console.error("Failed to enhance:", error);
+        } finally {
+            setIsEnhancing(false);
+        }
+    };
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
@@ -115,6 +130,7 @@ export function PromptInput({
                             <Paperclip size={16} />
                             <span>Attach</span>
                         </button>
+
                         <button
                             type="button"
                             className={cn(
@@ -127,6 +143,26 @@ export function PromptInput({
                         >
                             <Palette size={16} />
                             <span>Theme</span>
+                        </button>
+
+                        {/* Enhance Prompt Button */}
+                        <button
+                            type="button"
+                            onClick={handleEnhance}
+                            disabled={!prompt.trim() || isEnhancing || isLoading}
+                            className={cn(
+                                'flex items-center gap-1.5 px-3 py-1.5',
+                                'rounded-[var(--radius-md)]',
+                                'text-[var(--text-sm)]',
+                                isEnhancing
+                                    ? 'text-[var(--accent-primary)] bg-[var(--accent-primary)]/10'
+                                    : 'text-[var(--accent-primary)] hover:bg-[var(--accent-primary)]/10',
+                                'transition-colors',
+                                'disabled:opacity-50 disabled:cursor-not-allowed'
+                            )}
+                        >
+                            <Sparkles size={16} className={isEnhancing ? "animate-spin" : ""} />
+                            <span>{isEnhancing ? "Enhancing..." : "Enhance"}</span>
                         </button>
                     </div>
 
@@ -153,7 +189,7 @@ export function PromptInput({
             <p className="text-center text-[var(--text-xs)] text-[var(--text-muted)] mt-3">
                 Press <kbd className="px-1.5 py-0.5 rounded bg-[var(--bg-tertiary)] text-[var(--text-secondary)]">Enter</kbd> to submit, <kbd className="px-1.5 py-0.5 rounded bg-[var(--bg-tertiary)] text-[var(--text-secondary)]">Shift+Enter</kbd> for new line
             </p>
-        </form>
+        </form >
     );
 }
 

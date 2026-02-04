@@ -123,6 +123,25 @@ export async function checkBackendHealth(): Promise<boolean> {
 }
 
 /**
+ * Enhance prompt using NLP
+ */
+export async function enhancePrompt(prompt: string): Promise<string> {
+    try {
+        const response = await fetch(`${BACKEND_URL}/enhance`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ prompt }),
+        });
+        if (!response.ok) throw new Error("Enhancement failed");
+        const data = await response.json();
+        return data.enhanced_prompt;
+    } catch (e) {
+        console.error("Enhance error:", e);
+        return prompt; // Fallback to original
+    }
+}
+
+/**
  * Fetch list of recent projects
  */
 export interface ProjectSummary {

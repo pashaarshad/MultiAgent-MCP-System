@@ -414,6 +414,65 @@ Requirements:
         )
 
 
+class EnhanceRequest(BaseModel):
+    prompt: str
+
+@app.post("/api/enhance")
+async def enhance_prompt_endpoint(request: EnhanceRequest):
+    """
+    Standalone endpoint to expand a short prompt into a detailed specification.
+    """
+    model = CLOUD_CHAT_MODEL if PREFER_CLOUD else OLLAMA_CHAT_MODEL
+    print(f">>> Enhancing prompt with {model}...")
+
+    # The "Mega Architect" System Prompt (optimized for Structure & Detail)
+    nlp_system = """You are an elite Lead Product Designer and Grid System Architect.
+Your goal is to transform the user's request into a MASSIVE, DETAILED website specification.
+
+INSTRUCTIONS:
+1. **Analyze**: Understand the core intent (e.g., "YouTube Clone").
+2. **Expand**: Generate a comprehensive comprehensive 360-degree plan.
+3. **Structure**: Break it down into strict sections.
+
+REQUIRED SECTIONS (Do not output markdown formatting like # or ##, just use CAPS for headers):
+- BRANDING (Name, Colors, Typography, Vibe)
+- VISUAL LANGUAGE (Glassmorphism, Gradients, Spacing, Borders)
+- LANDING PAGE STRUCTURE (Hero, Features, How it Works, Testimonials, Footer)
+- COMPONENT DETAILS (Buttons, Inputs, Cards, Navigation)
+- USER EXPERIENCE (Hover effects, Animations, Transitions)
+- COPYWRITING (Headlines, Subtext, Call to Action)
+
+RULES:
+- Do NOT write code.
+- Write at least 500 words of detailed design specs.
+- Use professional, expensive-sounding design terminology.
+- Be extremely specific about colors (Hex codes) and layout (Flex/Grid).
+
+Output the text directly."""
+
+    try:
+        use_cloud = PREFER_CLOUD and bool(OPENROUTER_API_KEY)
+        
+        if use_cloud:
+            enhanced_text = await call_openrouter(
+                f"Expand this idea into a full spec: {request.prompt}",
+                CLOUD_CHAT_MODEL,
+                nlp_system
+            )
+        else:
+            enhanced_text = await call_ollama(
+                f"Expand this idea into a full spec: {request.prompt}",
+                OLLAMA_CHAT_MODEL,
+                nlp_system
+            )
+            
+        return {"enhanced_prompt": enhanced_text}
+        
+    except Exception as e:
+        print(f"Enhancement failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.post("/api/chat")
 async def chat_modify(request: ChatRequest):
     """Chat endpoint for iterative code modifications."""
